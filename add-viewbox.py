@@ -50,10 +50,13 @@ def length_as_pixels(length: Optional[str]) -> float:
 def add_viewbox(svg_file):
     svg = ET.parse(svg_file)
     svg_root = svg.getroot()
-    width = length_as_pixels(svg_root.attrib.pop('width', None))
-    height = length_as_pixels(svg_root.attrib.pop('height', None))
+    width = svg_root.attrib.pop('width', None)
+    height = svg_root.attrib.pop('height', None)
     if 'viewBox' not in svg_root.attrib:
-        svg_root.attrib['viewBox'] = f'0 0 {width} {height}'
+        try:
+            svg_root.attrib['viewBox'] = f'0 0 {length_as_pixels(width)} {length_as_pixels(height)}'
+        except ValueError as e:
+            raise ValueError(f'{svg_file}: {str(e)}')
     print(f'Tidied {svg_file}')
     with open(svg_file, 'wb') as fp:
         svg.write(fp, encoding='utf-8', pretty_print=True, xml_declaration=True)
