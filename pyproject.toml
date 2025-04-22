@@ -1,8 +1,7 @@
-name = 'svg-tools'
-
-[tool.poetry]
-package-mode = false
-
-[tool.poetry.dependencies]
-python = ">=3.10,<4.0"
-lxml = "^5.3.0"
+[project]
+name = "svg-tools"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "lxml>=5.3.0"
+]
