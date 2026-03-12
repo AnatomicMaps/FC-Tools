@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import sys
 from typing import Optional
 
 #===============================================================================
@@ -10,7 +11,8 @@ import lxml.etree as etree
 
 #===============================================================================
 
-from svg import SVGBondgraph, ShapeClassifier, SVG_TAG
+from bvctools.bondgraph import BondgraphMaker
+from bvctools.svg import SVGBondgraph, SVG_TAG
 
 #===============================================================================
 
@@ -32,27 +34,25 @@ class SVGOutput:
             svg.write(fp, encoding='utf-8', pretty_print=True, xml_declaration=True)
 
 #===============================================================================
-#===============================================================================
 
 def main():
 #==========
-    from svg.settings import settings
+    # use argparse...
+    #
+    from bvctools.svg.settings import settings
     settings['add-classes'] = True
     settings['debug-connections'] = True
-
-    import sys
 
     svg_bg = SVGBondgraph(sys.argv[1])
     svg_bg.process()
 
-    classifier = ShapeClassifier(svg_bg)
-    classifier.classify()
+    bg_maker = BondgraphMaker(svg_bg)
+    bg_maker.save_bondgraph('bvc-bg.ttl')
 
-    classifier.save('bvc-bg.json')
+    with open('bvc-bg.json', 'w') as fp:
+        json.dump(bg_maker.classified_shapes, fp, indent=4)
     with open('properties.json', 'w') as fp:
-        json.dump({
-            'features': classifier.features
-            }, fp, indent=4)
+        json.dump({ 'features': bg_maker.features }, fp, indent=4)
     svg_bg.save_svg('bvc-bg.svg', add_stylesheet=True)
 
 #===============================================================================

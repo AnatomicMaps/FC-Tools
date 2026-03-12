@@ -31,11 +31,10 @@ import numpy as np
 from shapely.geometry.base import BaseGeometry
 import shapely.ops
 import skia
-import svgelements
 
 #===============================================================================
 
-from utils.treelist import TreeList
+from ..utils.treelist import TreeList
 
 from .definitions import DefinitionStore, ObjectStore
 from .geometry.transform import SVGTransform, Transform
@@ -94,16 +93,19 @@ BG_STYLESHEET_ID = 'bg-stylesheet'
 
 class SVGBondgraph:
     def __init__(self, svg_source: str | Path):
-        # Clunky, but this will reify the SVG, removing internal transformations
-        svg = svgelements.SVG.parse(svg_source)
-        self.__svg = etree.fromstring(svg.string_xml())
-
+        source_path = Path(svg_source)
+        self.__id = source_path.stem.replace(' ', '_')
+        self.__svg = etree.parse(source_path).getroot()
         self.__transform = Transform.Identity()
         self.__style_matcher = StyleMatcher(self.__svg.find(f'.//{SVG_TAG('style')}'))
         self.__definitions = DefinitionStore()
         self.__clip_geometries = ObjectStore()
         self.__shapes: TreeList[Shape] = TreeList()
         self.__init_element_id()
+
+    @property
+    def id(self) -> str:
+        return self.__id
 
     @property
     def shapes(self) -> TreeList[Shape]:

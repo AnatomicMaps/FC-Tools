@@ -1,8 +1,8 @@
 #===============================================================================
 #
-#  Flatmap viewer and annotation tools
+#  CellDL and bondgraph tools
 #
-#  Copyright (c) 2020 - 2025  David Brooks
+#  Copyright (c) 2020 - 2025 David Brooks
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -18,21 +18,23 @@
 #
 #===============================================================================
 
-import re
+from ..rdf import Namespace
 
 #===============================================================================
 
-BG_ELEMENT_PREFIXES = re.compile(r'q_|v_|u_|K_|TF_|FTU: ')
+BGF = Namespace('https://bg-rdf.org/ontologies/bondgraph-framework#')
+CDT = Namespace('https://w3id.org/cdt/')
+RDF = Namespace('http://www.w3.org/1999/02/22-rdf-syntax-ns#')
+RDFS = Namespace('http://www.w3.org/2000/01/rdf-schema#')
 
 #===============================================================================
 
-BONDGRAPH_NODES = {   ## border (stroke) colour
-    'bgf:ResistanceNode': '#00b050',   # 'v'        "v_epi.bl_NKE",  "v_epi.bl_GLUT2"
-    'bgf:StorageNode':    '#ff0000',   # 'q', 'u'   "q_epi_H2O"
-    # 'K'
-    # 'TF'      "TF_NTS_f.br"
-    # 'FTU:'    "FTU: Cardiomyocyte"
+NAMESPACES = {
+    'bgf': 'https://bg-rdf.org/ontologies/bondgraph-framework#',
+    'cdt': 'https://w3id.org/cdt/',
+    'owl': 'http://www.w3.org/2002/07/owl#',
+    'rdfs': 'http://www.w3.org/2000/01/rdf-schema#',
+    'xsd': 'http://www.w3.org/2001/XMLSchema#',
 }
 
-#===============================================================================
 #===============================================================================

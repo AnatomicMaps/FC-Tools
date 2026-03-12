@@ -18,8 +18,6 @@
 #
 #===============================================================================
 
-import json
-from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 #===============================================================================
@@ -29,14 +27,14 @@ import shapely
 #===============================================================================
 
 if TYPE_CHECKING:
+    from bvctools.bondgraph import BondgraphMaker
     from ..source import SVGBondgraph
 
 from ..settings import settings
 
-from . import Shape, SHAPE_TYPE
-from .bondgraph import BG_ELEMENT_PREFIXES
+from . import BG_ELEMENT_PREFIXES, Shape, SHAPE_TYPE
 from .connections import ConnectionEndFinder
-from .labels import make_labels, make_name
+from .labels import FullName, make_name
 from .line_finder import LineFinder, MAX_LINE_WIDTH
 from .utils import add_class, svg_element
 
@@ -53,14 +51,9 @@ Parse SVG.
 #===============================================================================
 
 class ShapeClassifier:
-    def __init__(self, svg_bg: 'SVGBondgraph'):
+    def __init__(self, svg_bg: 'SVGBondgraph', bondgraph: 'BondgraphMaker'):
         self.__svg_bg = svg_bg
-        self.__bond_graph = {
-            'connections': [],
-            'containers': [],
-            'elements': [],
-            'text': [],
-        }
+        self.__bondgraph = bondgraph
         self.__line_finder = LineFinder()
         self.__connections = []
         self.__elements = {}
@@ -98,43 +91,59 @@ class ShapeClassifier:
         end_finder = ConnectionEndFinder(self.__elements.values())
         for shape in self.__connections:
             ends = end_finder.get_ends(shape.connection)
-            print(shape.id,
-                '   ', self.__element_name(ends[0].id) if ends[0] and ends[0].id else None,
-                '-->', self.__element_name(ends[1].id) if ends[1] and ends[1].id else None)
+            source = ends[0].id if ends[0] else None
+            target = ends[1].id if ends[1] else None
+            if settings.debug_connections:
+                self.__svg_bg.add_element(svg_element(shape.connection, classes='centreline'))
+            if source != target:
+                self.__bondgraph.add_connection({
+                    'id': shape.id,
+                    'source': source,
+                    'target': target
+                })
+                if settings.debug_connections:
+                    print(shape.id,
+                        '   ', self.__element_name(source) if source else None,
+                        '-->', self.__element_name(target) if target else None)
 
     def __element_name(self, id: str) -> Optional[str]:
     #===================================================
         if id in self.__elements:
             return self.__elements[id].name
 
-    def save(self, output_file: str | Path):
-    #=======================================
-        with open(output_file, 'w') as fp:
-            json.dump(self.__bond_graph, fp, indent=4)
-
     def __output_shape(self, shape: Shape, text: list[str]):
-    #================================================================================================
+    #=======================================================
         id = self.__svg_bg.get_shape_id(shape)
         if (name := make_name(text)) != '':
             shape.name = name
-            if BG_ELEMENT_PREFIXES.match(name):
-                bg_group = 'elements'
-                add_class(shape.element, 'element')
-                self.__elements[shape.id] = shape
-                self.__features[id] = {
-                    'name': name,
-                    'label': make_labels(name)
-                }
-            else:
-                bg_group = 'containers'
-                add_class(shape.element, 'container')
-            self.__bond_graph[bg_group].append({
+            properties = {
                 'id': id,
                 'name': name,
-                'area': shape.geometry.area,
-                'fill': shape.fill,
                 'stroke': shape.stroke
-            })
+            }
+            if BG_ELEMENT_PREFIXES.match(name):
+                add_class(shape.element, 'element')
+                self.__elements[shape.id] = shape
+                ## need to label after using stroke etc to get element type
+                ## `u` could be either storage or potential
+                labels = []
+                for nm in name.split('_,_'):
+                    full_name = FullName(nm)
+                    labels.append(full_name.label)
+                    if len(labels) == 1 and (symbol := full_name.symbol) is not None:
+                        properties['symbol'] = symbol
+                        properties['species'] = full_name.species
+                        properties['location'] = full_name.location
+                label = '\n'.join(labels)
+                self.__features[id] = {
+                    'name': name,
+                    'label': label
+                }
+                properties['label'] = label
+                self.__bondgraph.add_element(properties)
+            else:
+                add_class(shape.element, 'compartment')
+                self.__bondgraph.add_compartment(properties)
         else:
             bounds = shape.geometry.bounds
             width = abs(bounds[2] - bounds[0])
@@ -151,16 +160,11 @@ class ShapeClassifier:
                     connection = None
             if connection is not None:
                 add_class(shape.element, 'connection')
-                self.__bond_graph['connections'].append({
-                    'id': id
-                })
                 shape.connection = connection
                 self.__connections.append(shape)
-                if settings.debug_connections:
-                    self.__svg_bg.add_element(svg_element(connection, classes='centreline'))
             else:
-                add_class(shape.element, 'container')
-                self.__bond_graph['containers'].append({
+                add_class(shape.element, 'compartment')
+                self.__bondgraph.add_compartment({
                     'id': id,
                     'area': shape.geometry.area,
                     'fill': shape.fill,

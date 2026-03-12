@@ -23,7 +23,7 @@ import re
 
 #===============================================================================
 
-from .bondgraph import BG_ELEMENT_PREFIXES
+from . import BG_ELEMENT_PREFIXES
 
 #===============================================================================
 
@@ -165,6 +165,24 @@ def osmosis(element: str, location: str) -> str:
         description.append(get_location(location))
     return ' '.join(description)
 
+#===============================================================================
+
+def water(element: str, location: str) -> str:
+    description = []
+    if element == 'q':
+        description.append(f'amount of water in')
+        description.append(get_location(location))
+    elif element == 'u':
+        description.append(f'water pressure in')
+        description.append(get_location(location))
+    elif element == 'v':
+        description.append('water flow in')
+        description.append(get_location(location))
+    else:
+        description.append(element)
+        description.append(get_location(location))
+    return ' '.join(description)
+
 #===============================================
 #===============================================================================
 
@@ -174,8 +192,7 @@ SPECIFIC_NAMES = {
     'ATP': partial(chemical_species, 'ATP'),
     'CO2': partial(chemical_species, 'carbon dioxide'),
     'Glc': partial(chemical_species, 'glucose'),
-    'H2O': partial(chemical_species, 'water'),
-    'H2O': partial(chemical_species, 'water'),
+    'H2O': water,
     'Na+': partial(chemical_species, 'sodium'),
     'NKE': partial(chemical_species, 'sodium through NKE ATPase'),
     'O2': partial(chemical_species, 'oxygen'),
@@ -201,22 +218,48 @@ def make_name(text: list[str]) -> str:
         name = name.replace(s, r)
     return name
 
-def make_label(name: str) -> str:
-#================================
-    if name.startswith('FTU: '):
-        pass
-    elif BG_ELEMENT_PREFIXES.match(name):
-        parts = name.split('_', 2)
-        if (name_function := SPECIFIC_NAMES.get(parts[2])) is not None:
-            label = name_function(parts[0], parts[1])
-            if len(label):
-                label = label[0].upper() + label[1:]
-            return label
-    return name
+#===============================================================================
 
-def make_labels(name: str) -> str:
-#=================================
-    return '\n'.join([make_label(n) for n in name.split('_,_')])
+class FullName:
+    def __init__(self, name: str):
+        self.__label = name
+        self.__ftu = None
+        self.__symbol = None
+        self.__species = None
+        self.__location = None
+        if name.startswith('FTU: '):
+            self.__ftu = name[4:].strip()
+        elif BG_ELEMENT_PREFIXES.match(name):
+            parts = name.split('_', 2)
+            self.__symbol = parts[0]
+            self.__location = parts[1]
+            self.__species = parts[2]
+            if (name_function := SPECIFIC_NAMES.get(parts[2])) is not None:
+                label = name_function(parts[0], parts[1])
+                if len(label):
+                    label = label[0].upper() + label[1:]
+                self.__label = label
+
+    @property
+    def ftu(self):
+        return self.__ftu
+
+    @property
+    def label(self):
+        return self.__label
+
+    @property
+    def location(self):
+        return self.__location
+
+    @property
+    def species(self):
+        return self.__species
+
+    @property
+    def symbol(self):
+        return self.__symbol
+
 
 #===============================================================================
 #===============================================================================

@@ -295,16 +295,24 @@ class LineFinder:
         self.__epsilon = scaling*EPSILON
         self.__max_line_width = scaling*MAX_LINE_WIDTH
 
-    def get_line(self, shape: Shape) -> Optional[LineString]:
+    def get_line(self, shape: Shape, debug=False) -> Optional[LineString]:
     #========================================================
         ends_graph = nx.Graph()
         used_lines: set[Line] = set()
         mid_lines: list[Line] = []
+
         geometry = shape.geometry
         if geometry.geom_type == 'MultiPolygon':
             geometry = geometry.buffer(20).buffer(-20).simplify(0.5, preserve_topology=False)
             dashed = True
+
         boundary_coords = geometry.boundary.simplify(self.__epsilon).coords
+
+        if debug:
+            print(shape.id)
+            print(list(boundary_coords))
+            print(shapely.to_wkt(shape.geometry))
+
         shapely.prepare(geometry)
         boundary_line_coords = zip(boundary_coords, boundary_coords[1:])
         for (line0, line1) in itertools.combinations(boundary_line_coords, 2):
@@ -316,8 +324,8 @@ class LineFinder:
                 p0 = HorizontalLine.from_line(l0)
                 p1 = p0.project(l1)
 
-#                if trace:
-#                    print('PAR', p0.separation(p1), self.__max_line_width, p0.overlap(p1), shape.id, p0, p1)
+                if debug:
+                    print('PAR', p0.separation(p1), self.__max_line_width, p0.overlap(p1, False), p0.overlap(p1, True), shape.id, p0, p1)
 
                 if ((pt := p0.mid_point(p1)) is not None
                  and shapely.contains_xy(geometry, pt.x, pt.y)
@@ -329,12 +337,19 @@ class LineFinder:
                       ):
                         mid_lines.append(p0.mid_line(p1))
                         used_lines.update([l0, l1])
+
             elif (pt := l0.intersection(l1)) is not None:
                 # Non parallel line pair that intersect without extension
                 ends_graph.add_edge(l0, l1, intersection=pt)
 
         # Remove lines that were part of a parallel pair
         ends_graph.remove_nodes_from(used_lines)
+
+        if debug:
+            print('MID', mid_lines)
+            print('EG', len(ends_graph))
+            #breakpoint()
+
         if len(mid_lines) == 1:
             # Only a single line segment
             line_points = [mid_lines[0].p0, mid_lines[0].p1]
@@ -354,9 +369,9 @@ class LineFinder:
                         if connecting_line:
                             i0 = l0.intersection(connecting_line, True)
                             i1 = l1.intersection(connecting_line, True)
-#                            if trace:
-#                                print(i0, l0.string, connecting_line.string)
-#                                print(i1, connecting_line.string, l1.string)
+                            if debug:
+                                print(i0, l0.string, connecting_line.string)
+                                print(i1, connecting_line.string, l1.string)
                             if i0 is not None and i1 is not None:
                                 G.add_edge(l0, connecting_line, intersection=i0)
                                 G.add_edge(connecting_line, l1, intersection=i1)
@@ -372,6 +387,7 @@ class LineFinder:
                 assert len(end_lines) == 2, f"Shape as line doesn't have two ends: {end_lines}"
             except (ValueError, AssertionError) as err:
                 logging.warning(f'{shape.id}: {err}')
+                print(f'{shape.id}: {err}')
                 return None
 
             start_line = end_lines[0]
