@@ -1,7 +1,22 @@
 [project]
-name = "svg-tools"
+name = "fc-tools"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "lxml>=5.3.0"
+    "beziers>=0.6.0",
+    "colormath>=3.0.0",
+    "cssselect2>=0.8.0",
+    "lxml>=6.0.0",
+    "networkx>=3.5",
+    "numpy>=2.3.2",
+    "rdflib>=7.1.4",
+    "shapely>=2.1.1",
+    "skia-python>=138.0",
+    "tinycss2>=1.4.0",
+    "transforms3d>=0.4.2",
+]
+
+[dependency-groups]
+dev = [
+    "jupyterlab>=4.4.5",
 ]
