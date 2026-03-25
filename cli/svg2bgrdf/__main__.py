@@ -11,6 +11,7 @@ import lxml.etree as etree
 #===============================================================================
 
 from fmtools.bondgraph.labels import bg_annotation
+from fmtools.cellml import CellMLFile
 from fmtools.shapes import PropertyDict
 from fmtools.svg import SVGDiagram
 
@@ -26,15 +27,20 @@ EXCLUDED_FEATURE_NAMES = [
     'F'
 ]
 
-def flatmap_features(features: dict[str, PropertyDict]) -> dict[str, PropertyDict]:
-#==================================================================================
+def flatmap_features(features: dict[str, PropertyDict], cellml_file: Optional[str]) -> dict[str, PropertyDict]:
+#==============================================================================================================
     map_features: dict[str, PropertyDict] = {}
+    cellml = CellMLFile(cellml_file) if cellml_file is not None else None
     for id, feature in features.items():
         if (name := feature.get('name')) is not None and name not in EXCLUDED_FEATURE_NAMES:
             properties = feature
             properties.update(bg_annotation(str(name)))
             properties.pop('fill', None)
             properties.pop('stroke', None)
+            if cellml is not None:
+                cellml_var = cellml.get_variable(properties)
+                if cellml_var is not None:
+                    properties['variable'] = cellml_var
             map_features[id] = properties
     return map_features
 
@@ -46,6 +52,7 @@ def main():
     from fmtools.settings import settings
 
     parser = argparse.ArgumentParser(description='Extract BG information from an SVG and assign IDs to its shapes')
+    parser.add_argument('--model', metavar='CELLML_FILE', help='The BG CellML model represented by the SVG diagram')
     parser.add_argument('svg_file', metavar='SVG_FILE', help='SVG file to process. The file is updated in place')
     args = parser.parse_args()
 
@@ -59,7 +66,7 @@ def main():
     with open('features.json', 'w') as fp:
         json.dump({ 'features': diagram.features }, fp, indent=4)
 
-    properties = flatmap_features(diagram.features)
+    properties = flatmap_features(diagram.features, args.model)
     with open('properties.json', 'w') as fp:
         json.dump({ 'features': properties }, fp, indent=4)
 
