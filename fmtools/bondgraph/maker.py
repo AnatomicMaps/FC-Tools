@@ -18,11 +18,11 @@
 #
 #===============================================================================
 
-from bvctools.svg import ShapeClassifier
-from bvctools.svg.shapes.colours import ColourMatcherDict
-from bvctools.svg.source import SVGBondgraph
-from bvctools.rdf import Literal, Namespace, RDFGraph, URIRef
+from ..rdf import Literal, Namespace, RDFGraph, URIRef
+from ..svg import SVGDiagram
+from ..utils.colours import ColourMatcherDict
 
+from .classifier import ShapeClassifier
 from .namespaces import BGF, NAMESPACES, RDF, RDFS
 
 #===============================================================================
@@ -108,7 +108,7 @@ MODEL_NS = Namespace('#')
 #===============================================================================
 
 class BondgraphMaker:
-    def __init__(self, svg_bg: 'SVGBondgraph'):
+    def __init__(self, svg_bg: SVGDiagram):
         self.__uri = MODEL_NS[svg_bg.id]
         self.__rdf_graph = RDFGraph(NAMESPACES)
         self.__rdf_graph.add_namespace('', str(MODEL_NS))

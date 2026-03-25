@@ -19,7 +19,6 @@
 #===============================================================================
 
 from enum import Enum
-import re
 from typing import Any, Optional
 
 #===============================================================================
@@ -29,7 +28,12 @@ from shapely.geometry.base import BaseGeometry
 
 #===============================================================================
 
-BG_ELEMENT_PREFIXES = re.compile(r'q_|v_|u_|K_|TF_|FTU: ')
+# Exports
+#from .classifier import ShapeClassifier
+
+#===============================================================================
+
+type PropertyDict = dict[str, bool|float|int|str]
 
 #===============================================================================
 
@@ -50,15 +54,14 @@ class Shape:
     def __init__(self, element: etree.Element, geometry: BaseGeometry, properties: Optional[dict]=None, **kwds):
         self.__element = element
         self.__geometry = geometry
-        self.__properties = {}
+        self.__id = element.attrib.get('id')
+        self.__properties: PropertyDict = {}
         if properties is not None:
             self.__properties.update(properties)
         for key, value in kwds.items():
             self.__setattr__(key, value)
         if self.shape_type is None:
             self.shape_type = SHAPE_TYPE.UNKNOWN
-        if (id := element.attrib.get('id')) is not None:
-            self.__properties['id'] = id
 
     def __getattr__(self, key: str) -> Any:
         if key.startswith('_'):
@@ -82,7 +85,7 @@ class Shape:
 
     @property
     def id(self) -> Optional[str]:
-        return self.__properties.get('id')
+        return self.__id
 
     @property
     def properties(self):

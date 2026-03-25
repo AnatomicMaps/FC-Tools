@@ -23,7 +23,11 @@ import re
 
 #===============================================================================
 
-from . import BG_ELEMENT_PREFIXES
+from ..shapes import PropertyDict
+
+#===============================================================================
+
+BG_ELEMENT_PREFIXES = re.compile(r'q_|v_|u_|K_|TF_|FTU: ')
 
 #===============================================================================
 
@@ -125,6 +129,13 @@ SOURCE_SINK = {
     'out2': 'out (2)',
 }
 
+def flow_source_sink(location: str) -> str:
+#==========================================
+    if (source_sink := SOURCE_SINK.get(location)) is not None:
+        return source_sink
+    else:
+        return f'in {get_location(location)}'
+
 def chemical_species(species: str, element: str, location: str) -> str:
 #======================================================================
     description = []
@@ -136,11 +147,7 @@ def chemical_species(species: str, element: str, location: str) -> str:
         description.append(get_location(location))
     elif element == 'v':
         description.append(f'flow of {species}')
-        if (source_sink := SOURCE_SINK.get(location)) is not None:
-            description.append(source_sink)
-        else:
-            description.append('in')
-            description.append(get_location(location))
+        description.append(flow_source_sink(location))
     else:
         description.append(element)
         description.append(species)
@@ -176,8 +183,8 @@ def water(element: str, location: str) -> str:
         description.append(f'water pressure in')
         description.append(get_location(location))
     elif element == 'v':
-        description.append('water flow in')
-        description.append(get_location(location))
+        description.append('water flow')
+        description.append(flow_source_sink(location))
     else:
         description.append(element)
         description.append(get_location(location))
@@ -202,7 +209,7 @@ SPECIFIC_NAMES = {
 #===============================================================================
 
 # Performed in order
-TEXT_SUBSTITUTIONS = {
+CLEAN_NAME = {
     '_._': '.',
     'H_2_O': 'H2O',
     'Na_+': 'Na+',
@@ -211,55 +218,46 @@ TEXT_SUBSTITUTIONS = {
     'k_idney': 'kidney',
 }
 
-def make_name(text: list[str]) -> str:
-#=====================================
-    name = re.sub(r'__+', '_', '_'.join(text))
-    for s, r in TEXT_SUBSTITUTIONS.items():
+def clean_name(name: str) -> str:
+#================================
+    for s, r in CLEAN_NAME.items():
         name = name.replace(s, r)
     return name
 
 #===============================================================================
 
-class FullName:
-    def __init__(self, name: str):
-        self.__label = name
-        self.__ftu = None
-        self.__symbol = None
-        self.__species = None
-        self.__location = None
-        if name.startswith('FTU: '):
-            self.__ftu = name[4:].strip()
-        elif BG_ELEMENT_PREFIXES.match(name):
-            parts = name.split('_', 2)
-            self.__symbol = parts[0]
-            self.__location = parts[1]
-            self.__species = parts[2]
-            if (name_function := SPECIFIC_NAMES.get(parts[2])) is not None:
-                label = name_function(parts[0], parts[1])
-                if len(label):
-                    label = label[0].upper() + label[1:]
-                self.__label = label
+def bg_annotation(name: str) -> PropertyDict:
+    properties: PropertyDict = {}
+    name = clean_name(name)
+    properties['name'] = name
+    properties['label'] = name
+    if name.startswith('FTU: '):
+        properties['ftu'] = name[4:].strip()
+    elif BG_ELEMENT_PREFIXES.match(name):
+        parts = name.split('_', 2)
+        properties['symbol'] = parts[0]
+        properties['location'] = parts[1]
+        properties['species'] = parts[2]
+        if (name_function := SPECIFIC_NAMES.get(parts[2])) is not None:
+            label = name_function(parts[0], parts[1])
+            if len(label):
+                label = label[0].upper() + label[1:]
+            properties['label'] = label
+    return properties
 
-    @property
-    def ftu(self):
-        return self.__ftu
+'''
+u_rPeritubularC_b
+v_NTS_f.lsr
+v_RVLM_f.h.in
+v_lsr_f
+K_p_lsr
+FTU: Cardiomyocyte
+TF_b_r_f
+K_NA___ino_NA
+u_NApn_f
+__
 
-    @property
-    def label(self):
-        return self.__label
-
-    @property
-    def location(self):
-        return self.__location
-
-    @property
-    def species(self):
-        return self.__species
-
-    @property
-    def symbol(self):
-        return self.__symbol
-
+'''
 
 #===============================================================================
 #===============================================================================

@@ -18,8 +18,10 @@
 #
 #===============================================================================
 
+from collections import defaultdict
 import logging
 from pathlib import Path
+import re
 from typing import Optional
 import unicodedata
 
@@ -27,20 +29,18 @@ import unicodedata
 
 from cssselect2 import ElementWrapper
 import lxml.etree as etree
-import numpy as np
 from shapely.geometry.base import BaseGeometry
 import shapely.ops
 import skia
 
 #===============================================================================
 
-from ..utils.treelist import TreeList
+from ..shapes import PropertyDict, Shape, SHAPE_TYPE
 
 from .definitions import DefinitionStore, ObjectStore
 from .geometry.transform import SVGTransform, Transform
 from .geometry.utils import circle_from_bounds, geometry_from_svg_path, length_as_pixels
 from .geometry.utils import length_as_points, parse_svg_path
-from .shapes import Shape, SHAPE_TYPE
 from .styling import StyleMatcher, wrap_element
 
 #===============================================================================
@@ -49,8 +49,6 @@ SVG_NS = 'http://www.w3.org/2000/svg'
 
 def SVG_TAG(tag):        # An SVG namespaced lxml.etree tag
     return f'{{{SVG_NS}}}{tag}'
-
-#===============================================================================
 
 # These SVG tags are not used to determine shape geometry
 IGNORED_SVG_TAGS = [
@@ -79,19 +77,7 @@ ID_PREFIX = 'ID-'
 
 #===============================================================================
 
-BG_STYLESHEET = """
-    .error {
-        fill: red;
-        stroke: yellow;
-        stroke-width: 2px;
-    }
-"""
-
-BG_STYLESHEET_ID = 'bg-stylesheet'
-
-#===============================================================================
-
-class SVGBondgraph:
+class SVGDiagram:
     def __init__(self, svg_source: str | Path):
         source_path = Path(svg_source)
         self.__id = source_path.stem.replace(' ', '_')
@@ -100,7 +86,8 @@ class SVGBondgraph:
         self.__style_matcher = StyleMatcher(self.__svg.find(f'.//{SVG_TAG('style')}'))
         self.__definitions = DefinitionStore()
         self.__clip_geometries = ObjectStore()
-        self.__shapes: TreeList[Shape] = TreeList()
+        self.__shapes: list[Shape] = []
+        self.__features:  dict[str, PropertyDict] = {}
         self.__init_element_id()
 
     @property
@@ -108,32 +95,61 @@ class SVGBondgraph:
         return self.__id
 
     @property
-    def shapes(self) -> TreeList[Shape]:
-        return self.__shapes
+    def features(self) -> dict[str, PropertyDict]:
+        return self.__features
 
     def process(self):
     #=================
-        self.__shapes = self.__process_element_list(wrap_element(self.__svg), self.__transform)
+        self.__extract_shapes()
+        self.__extract_features()
 
-    def save_svg(self, svg_output: str | Path, add_stylesheet=False):
-    #================================================================
-        if add_stylesheet:
-            stylesheet = self.__svg.find(f'.//{SVG_TAG('style')}[@id="{BG_STYLESHEET_ID}"]')
-            if stylesheet is None:
-                stylesheet = etree.Element(SVG_TAG('style'))
-                stylesheet.attrib['id'] = BG_STYLESHEET_ID
-                stylesheet.text = BG_STYLESHEET
-                self.__svg.insert(0, stylesheet)
+    def __extract_features(self):
+    #============================
+        last_shape = None
+        node_text = []
+        other_text = defaultdict(list)
+        for shape in self.__shapes:
+            if shape.shape_type == SHAPE_TYPE.TEXT:
+                if shape.text.strip() != '':
+                    text_pos = (shape.left, shape.baseline)
+                    if last_shape is not None and shapely.contains_xy(last_shape.geometry, *text_pos):
+                        node_text.append(shape.text)
+                    else:
+                        other_text[shape.id].append(shape.text)
+            else:
+                if last_shape is not None:
+                    self.__add_feature(last_shape, node_text)
+                    node_text = []
+                    text_pos = None
+                last_shape = shape
+        if last_shape is not None:
+            self.__add_feature(last_shape, node_text)
+        if other_text:
+            print('EXTRA TEXT:', other_text)
+
+    def __add_feature(self, shape: Shape, text: list[str]):
+    #=========================================================
+        if (name := re.sub(r'__+', '_', '_'.join(text)).replace('_._', '.')) != '':
+            shape.name = name
+            id = self.__get_shape_id(shape)
+            self.__features[id] = {
+                'name': name,
+                'fill': shape.fill,
+                'stroke': shape.stroke
+            }
+
+    def __extract_shapes(self):
+    #==========================
+        self.__process_element_list(wrap_element(self.__svg), self.__transform)
+
+    def save_svg(self, svg_output: str | Path):
+    #==========================================
         svg = etree.ElementTree(self.__svg)
         with open(svg_output, 'wb') as fp:
             svg.write(fp, encoding='utf-8', pretty_print=True, xml_declaration=True)
 
-    def add_element(self, element: etree.Element):
+    def __get_shape_id(self, shape: Shape) -> str:
     #=============================================
-        self.__svg.append(element)
-
-    def get_shape_id(self, shape: Shape) -> str:
-    #===========================================
         if (id := shape.id) is None:
             id = self.__next_element_id()
             shape.element.attrib['id'] = id
@@ -141,8 +157,9 @@ class SVGBondgraph:
         return id
 
     def __next_element_id(self) -> str:
-    #================================
+    #==================================
         self.__last_id += 1
+        print('get id', self.__last_id)
         return f'{ID_PREFIX}{self.__last_id:07}'
 
     def __init_element_id(self):
@@ -177,20 +194,17 @@ class SVGBondgraph:
         except ValueError:
             raise ValueError('Unsupported `transform-origin` units -- please normalise SVG source')
 
-    def __process_group(self, wrapped_group: ElementWrapper, transform) -> Optional[TreeList[Shape]]:
-    #================================================================================================
+    def __process_group(self, wrapped_group: ElementWrapper, transform):
+    #===================================================================
         group = wrapped_group.etree_element
         if len(group) == 0:
             return None
         group_transform = self.__get_transform(wrapped_group)
-        shapes = self.__process_element_list(wrapped_group,
-            transform@group_transform)
-        return shapes
+        self.__process_element_list(wrapped_group, transform@group_transform)
 
-    def __process_element_list(self, elements: ElementWrapper, transform) -> TreeList[Shape]:
-    #========================================================================================
+    def __process_element_list(self, elements: ElementWrapper, transform):
+    #=====================================================================
         children = list(elements.iter_children())
-        shapes: TreeList[Shape] = TreeList()
         for wrapped_element in children:
             element = wrapped_element.etree_element
             if (element.tag is etree.Comment
@@ -205,9 +219,8 @@ class SVGBondgraph:
                 wrapped_element = wrap_element(element)
             if element is not None and element.tag == SVG_TAG('clipPath'):
                 self.__add_clip_geometry(element, transform)
-            elif (shape := self.__process_element(wrapped_element, transform)) is not None:
-                shapes.append(shape)
-        return shapes
+            else:
+                self.__process_element(wrapped_element, transform)
 
     def __add_definitions(self, defs_element, transform):
     #====================================================
@@ -236,24 +249,26 @@ class SVGBondgraph:
                     geometries.append(geometry)
         return shapely.ops.unary_union(geometries) if len(geometries) else None
 
-    def __process_element(self, wrapped_element: ElementWrapper, transform) -> Optional[Shape|TreeList[Shape]]:
-    #==========================================================================================================
+    def __process_element(self, wrapped_element: ElementWrapper, transform):
+    #=======================================================================
         element = wrapped_element.etree_element
         element_style = self.__style_matcher.element_style(wrapped_element)
         properties = {}
         if element.tag in SVG_GEOMETRIC_ELEMENTS:
+            #if element.attrib.get('id') == 'ID-0000551':
+            #    breakpoint()
             geometry = self.__get_geometry(element, properties, transform)
             if geometry is None:
-                return None
+                return
             # Ignore element if fill is none and no stroke is specified
             elif (element_style.get('fill', '#FFF') == 'none'
             and element_style.get('stroke', 'none') == 'none'
             and 'id' not in properties):
-                return None
+                return
             else:
                 properties['fill'] = element_style.get('fill', 'none')
                 properties['stroke'] = element_style.get('stroke', 'none')
-                return Shape(element, geometry, properties)
+                self.__shapes.append(Shape(element, geometry, properties))
         elif element.tag == SVG_TAG('image'):
             geometry = None
             clip_path_url = element_style.pop('clip-path', None)
@@ -263,16 +278,15 @@ class SVGBondgraph:
                     T = transform@self.__get_transform(wrapped_element)
                     geometry = self.__get_clip_geometry(clip_path_element, T)
                 if geometry is not None:
-                    return Shape(element, geometry, properties, shape_type=SHAPE_TYPE.IMAGE)
+                    self.__shapes.append(Shape(element, geometry, properties, shape_type=SHAPE_TYPE.IMAGE))
         elif element.tag == SVG_TAG('g'):
-            return self.__process_group(wrapped_element, transform)
+            self.__process_group(wrapped_element, transform)
         elif element.tag == SVG_TAG('text'):
             geometry = self.__process_text(element, properties, transform)
             if geometry is not None:
-                return Shape(element, geometry, properties, shape_type=SHAPE_TYPE.TEXT)
+                self.__shapes.append(Shape(element, geometry, properties, shape_type=SHAPE_TYPE.TEXT))
         else:
             logging.warning(f'SVG element {element.tag} not processed...')
-        return None
 
     def __get_geometry(self, element, properties, transform) -> Optional[BaseGeometry]:
     #==================================================================================
